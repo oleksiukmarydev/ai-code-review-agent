@@ -1,5 +1,8 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { z } from "zod";
+import {betaZodTool} from "@anthropic-ai/sdk/helpers/beta/zod";
+import {z} from "zod";
+import {resolve, isAbsolute, relative, sep} from "node:path";
+import {realpath} from "node:fs/promises";
+import {readTextFile} from "../utils/read-text-file.js";
 
 export interface SearchMatch {
   file: string;
@@ -53,6 +56,33 @@ export function searchText(
     matches,
     truncated: isMaxResults,
   }
+}
+
+export async function searchFile(
+  repoRoot: string,
+  file: string,
+  query: string,
+  maxResults: number
+): Promise<SearchResult> {
+  if(isAbsolute(file)) {
+    throw new Error("Absolute file paths are not supported");
+  }
+
+  const filePath = resolve(repoRoot, file);
+  const relativePath = relative(repoRoot, filePath);
+  if(relativePath.startsWith(".." + sep) || relativePath === ".." || isAbsolute(relativePath)) {
+    throw new Error("File paths outside of the repository are not supported");
+  }
+
+  const realRepoRoot = await realpath(repoRoot);
+  const realFilePath = await realpath(filePath);
+  const realRelativePath = relative(realRepoRoot, realFilePath);
+  if(realRelativePath.startsWith(".." + sep) || realRelativePath === ".." || isAbsolute(realRelativePath)) {
+    throw new Error("File paths outside of the repository are not supported");
+  }
+
+  const fileContent = await readTextFile(realFilePath);
+  return searchText(file, fileContent, query, maxResults);
 }
 
 export const searchCodeTool = betaZodTool({
